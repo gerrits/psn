@@ -1,19 +1,17 @@
-                                toxic
+psn is meant to be an extremely reliable instant messaging service.
 
-toxic is meant to be an extremely reliable instant messaging service.
-
-toxic is based on Mosquitto, an MQTT broker and client library.
+psn is based on Mosquitto, an MQTT broker and client library.
 
 A full functioning system consinsts of:
         -An MQTT broker (mosquitto) with MySQL User auth enabled
         -(a registration handler) not implemented yet
-        -The toxic client
+        -The psn client
 
 ==USAGE DESCRIPTION==
 First Run:
 
-When a new user has downloaded, installed, and first started toxic he is confronted with a login screen in which he enters his toxic credentials.
-If the user is not yet registered he can register to toxic by choosing the register function and entering a new username and password.
+When a new user has downloaded, installed, and first started psn he is confronted with a login screen in which he enters his psn credentials.
+If the user is not yet registered he can register to psn by choosing the register function and entering a new username and password.
 
 Once Logged in, the user can:
         - Send messages to friended users
@@ -26,7 +24,7 @@ If a friend sends a message the user will be notified in real time and is able t
 
 The proof of concept cli client is used as follows:
 
-$>./toxic <username> <password>
+$>./psn <username> <password>
 
 Command                         | Description
 msg <user> <message>            | Send  a message to <user>
@@ -55,8 +53,8 @@ chat/+/<username>              | read
 NOTE: Right now, the persistence of the friend list is entirely handled by the client.
 
 --Example:
-Peter wants to communicate to Bob via toxic.
-Peter and Bobs clients are both connected to the toxic MQTT broker,
+Peter wants to communicate to Bob via psn.
+Peter and Bobs clients are both connected to the psn MQTT broker,
 each client has subscribed their topics:
 Peter:  users/Peter/#
 Bob:    users/Bob/#
