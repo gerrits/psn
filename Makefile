@@ -2,7 +2,7 @@ EXECUTABLE = psn_cli
 OBJECTS = psn.o psn_cli.o 
 
 CC 		= gcc
-CFLAGS 	= -Wall -Wextra
+CFLAGS 	= -Wall -Wextra 
 IFLAGS  = -Imosquitto/lib -Iuthash/src
 LDFLAGS = -Lmosquitto/lib -lmosquitto
 
@@ -20,7 +20,10 @@ run: $(EXECUTABLE)
 	@echo returned $$?
 
 test: $(EXECUTABLE)
-	echo test
+	@echo test
+
+stats: $(OBJECTS)
+	@cloc --exclude-dir=uthash,mosquitto .
 
 clean:
 	-rm $(EXECUTABLE)
