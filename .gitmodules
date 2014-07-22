@@ -1,6 +1,9 @@
 [submodule "uthash"]
 	path = uthash
 	url = https://github.com/troydhanson/uthash
+[submodule "libtomcrypt"]
+	path = libtomcrypt
+	url = https://github.com/libtom/libtomcrypt
 [submodule "jansson"]
 	path = jansson
 	url = https://github.com/akheron/jansson
