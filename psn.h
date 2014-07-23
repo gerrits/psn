@@ -1,9 +1,14 @@
+#ifndef _PSN_H_
+#define _PSN_H_
+
 #include <stdlib.h>
 #include <stdio.h>
 #include "mosquitto.h"
 #include "jansson.h"
-#include <tomcrypt.h>
-#include "uthash/src/uthash.h"
+#include "tomcrypt.h"
+#include "uthash.h"
+
+#include "init.h"
 
 //client config struct
 struct psn_s
@@ -54,6 +59,7 @@ struct user_s
 //public
 int psn_init(struct psn_s *psn, char *config_file_path);
 int psn_create_new_identity(struct psn_s *psn, char *username);
+
 int psn_make_friend_req(struct psn_s *psn , char *target, char *message);
 int psn_accept_friend_req(struct psn_s *psn, char *target);
 int psn_refuse_friend_req(struct psn_s *psn, char *target);
@@ -66,3 +72,4 @@ int psn_serialize_config(struct psn_s *psn, char *dest_str);
 int psn_deserialize_config(struct psn_s *psn, char *src_str);
 
 //send pixx etc
+#endif /* _PSN_H_ */

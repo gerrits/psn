@@ -1,3 +1,5 @@
+#define GMP_DESC
+#define USE_GMP
 #include "psn.h"
 
 static struct mosquitto *client = NULL;
@@ -19,7 +21,10 @@ int psn_init(struct psn_s *psn, char *config_file_path)
 		fprintf(stderr, "Unable to connect.\n");
 		return 1;
 	}
-
+	register_prng(&sprng_desc);
+	//init tomcrypt
+	ltc_mp = gmp_desc;
+	
 	//init uthash
 	psn->friends = NULL;
 	psn->friend_requests_incoming = NULL;
