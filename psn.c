@@ -4,6 +4,7 @@
 int psn_init(struct psn_s *psn, char *config_file_path)
 {
 	int ret = 0;
+
 	init_tomcrypt_lib();
 	init_mosquitto_lib();
 
@@ -31,6 +32,16 @@ int psn_init(struct psn_s *psn, char *config_file_path)
 
 int psn_create_new_identity(struct psn_s *psn, char *username)
 {
+	int err;
+	
+	strcpy(psn->username, username);
+	
+	if ((err = rsa_make_key(0, 
+							find_prng("sprng"), 
+							1024/8, 65537, &psn->pk_key))
+	    != CRYPT_OK) {
+		printf("rsa_make_key failed: %s\n", error_to_string(err));
+	}
 	return 0;
 }
 

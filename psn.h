@@ -30,8 +30,7 @@ struct psn_s
 	struct user_s *friend_requests_incoming;
 	
 	//keys
-	rsa_key priv_key;
-	rsa_key pub_key;
+	rsa_key pk_key;
 };
 
 //friend list entry
