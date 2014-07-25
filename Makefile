@@ -1,20 +1,26 @@
 EXECUTABLE = psn_cli
 
-OBJECTS = psn.o psn_cli.o
+OBJECTS = 	psn.o \
+			psn_cli.o \
+			init.o
 
 OTHER_OBJECTS = jansson/src/lib/libjansson.a \
 				mosquitto/lib/libmosquitto.a \
 				libtomcrypt/libtomcrypt.a
 
 CC 		= 	gcc
-CFLAGS 	= 	-Wall -Wextra 
+
+CFLAGS 	= 	-Wall -Wextra -DUSE_GMP -DGMP_DESC -std=c99	
+
 IFLAGS  = 	-Imosquitto/lib \
 			-Iuthash/src \
 			-Ijansson/src \
 			-Ilibtomcrypt/src/headers/
 
 LDFLAGS = 	-lssl \
-			-lcares
+			-lgmp \
+			-lcares \
+			-Llibtomcrypt
 
 all: $(EXECUTABLE)
 
@@ -22,7 +28,7 @@ $(EXECUTABLE): $(OBJECTS)
 	$(CC) $(CFLAGS) $(IFLAGS) -o $@ $^ $(OTHER_OBJECTS) $(LDFLAGS)
 	
 %.o: %.c 
-	$(CC) $^	(CFLAGS) $(IFLAGS) -MMD -c $<
+	$(CC) $^ $(CFLAGS) $(IFLAGS) -MMD -c $< 
 
 run: $(EXECUTABLE)
 	@echo Running $<
