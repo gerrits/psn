@@ -14,8 +14,9 @@ int main()
 	    != CRYPT_OK) {
 		printf("rsa_make_key failed: %s\n", error_to_string(err));
 	}
-	unsigned char buffer [1024];
-	unsigned char buffer2[1024];
+	unsigned char buffer  [1024];
+	unsigned char buffer2 [1024];
+	
 	unsigned long outlen = sizeof(buffer);
 	rsa_export(buffer, &outlen, PK_PUBLIC, &key_);
 

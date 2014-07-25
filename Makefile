@@ -8,9 +8,12 @@ OTHER_OBJECTS = jansson/src/lib/libjansson.a \
 				mosquitto/lib/libmosquitto.a \
 				libtomcrypt/libtomcrypt.a
 
+LIBFLAGS = -DUSE_GMP -DGMP_DESC
+
 CC 		= 	gcc
 
-CFLAGS 	= 	-Wall -Wextra -DUSE_GMP -DGMP_DESC -std=c99	
+CFLAGS 	= 	-Wall -Wextra -std=c99 $(LIBFLAGS)
+
 
 IFLAGS  = 	-Imosquitto/lib \
 			-Iuthash/src \
@@ -19,14 +22,22 @@ IFLAGS  = 	-Imosquitto/lib \
 
 LDFLAGS = 	-lssl \
 			-lgmp \
-			-lcares \
-			-Llibtomcrypt
+			-lcares
 
 all: $(EXECUTABLE)
 
-$(EXECUTABLE): $(OBJECTS)
-	$(CC) $(CFLAGS) $(IFLAGS) -o $@ $^ $(OTHER_OBJECTS) $(LDFLAGS)
-	
+$(EXECUTABLE): $(OBJECTS) $(OTHER_OBJECTS)
+	$(CC) $(CFLAGS) $(IFLAGS) -o $@ $^ $(LDFLAGS)
+
+jansson/src/lib/libjansson.a:
+	-cd jansson/src/; cmake ..; make; cd ../../
+
+mosquitto/lib/libmosquitto.a:
+	-cd mosquitto; make; cd ..
+
+libtomcrypt/libtomcrypt.a:
+	-cd libtomcrypt; CFLAGS="$(LIBFLAGS)" make; cd ..
+
 %.o: %.c 
 	$(CC) $^ $(CFLAGS) $(IFLAGS) -MMD -c $< 
 
@@ -39,9 +50,9 @@ test: $(EXECUTABLE)
 	@echo test
 
 stats: $(OBJECTS)
-	@cloc --exclude-dir=uthash,mosquitto,libtomcrypt,jansson --exclude-lang=D .
+	@cloc --exclude-dir=uthash,mosquitto,libtomcrypt,jansson,config,docs,.git --exclude-lang=D .
 
-clean:
+clean: 
 	-rm $(EXECUTABLE)
 	-rm $(OBJECTS)
 	-rm *.d
