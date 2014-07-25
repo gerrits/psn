@@ -3,6 +3,8 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <gmp.h>
+
 #include "mosquitto.h"
 #include "jansson.h"
 #include "tomcrypt.h"

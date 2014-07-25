@@ -1,41 +1,36 @@
-#define GMP_DESC
-#define USE_GMP
 #include "psn.h"
-
-static struct mosquitto *client = NULL;
+#include "init.h"
 
 int psn_init(struct psn_s *psn, char *config_file_path)
 {
+	int ret = 0;
+	init_tomcrypt_lib();
+	init_mosquitto_lib();
+
 	char *username = "test1";
-
-	mosquitto_lib_init();
 	
-	client = mosquitto_new(username, true, NULL);
-	if(client == NULL) {
+	psn->mosq = mosquitto_new(username, true, NULL);
+	if(psn->mosq == NULL) {
 		fprintf(stderr, "Could not create mosquitto instance.\n");
-		return 1;
+		ret = 1;
 	}
 
-	mosquitto_username_pw_set(client, username, "lol");
-	if(mosquitto_connect(client, "localhost", 1337, 60)){
+	mosquitto_username_pw_set(psn->mosq, username, "lol");
+	if(mosquitto_connect(psn->mosq, "localhost", 1337, 60)){
 		fprintf(stderr, "Unable to connect.\n");
-		return 1;
+		ret = 2;
 	}
-	register_prng(&sprng_desc);
-	//init tomcrypt
-	ltc_mp = gmp_desc;
-	
+
 	//init uthash
 	psn->friends = NULL;
 	psn->friend_requests_incoming = NULL;
 	psn->friend_requests_outgoing = NULL;
 
-	return 0;
+	return ret;
 }
 
 int psn_create_new_identity(struct psn_s *psn, char *username)
 {
-
 	return 0;
 }
 
@@ -119,7 +114,7 @@ int psn_serialize_config(struct psn_s *psn, char *dest_str)
 
 	char * json_result = json_dumps(root, 0);
 
-	stpcpy(dest_str, json_result);
+	strcpy(dest_str, json_result);
 
 	free(json_result);
 

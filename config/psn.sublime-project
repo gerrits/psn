@@ -1,0 +1,13 @@
+{
+	"folders":
+	[
+		{
+			"path": "/home/gerrits/Documents/Code/im_proj/psn/",
+			"file_exclude_patterns": ["*.sublime-*","*.o","*.d",".git*"]
+		}
+	],
+	"settings":
+    {
+        "tab_size": 4
+    }
+}
