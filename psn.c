@@ -1,83 +1,277 @@
 #include "psn.h"
 #include "init.h"
 
-int psn_init(struct psn_s *psn, char *config_file_path)
+int psn_init(struct psn_s *psn)
 {
-	int ret = 0;
-
-	init_tomcrypt_lib();
-	init_mosquitto_lib();
-
-	char *username = "test1";
-	
-	psn->mosq = mosquitto_new(username, true, NULL);
-	if(psn->mosq == NULL) {
-		fprintf(stderr, "Could not create mosquitto instance.\n");
-		ret = 1;
+	if(init_tomcrypt_lib()) {
+		printf("Init tomcrypt failed\n");
+		return -1;
 	}
-
-	mosquitto_username_pw_set(psn->mosq, username, "lol");
-	if(mosquitto_connect(psn->mosq, "localhost", 1337, 60)){
-		fprintf(stderr, "Unable to connect.\n");
-		ret = 2;
+	if(init_mosquitto_lib()) {
+		printf("Init Mosquitto failed\n");
+		return -1;
 	}
-
 	//init uthash
 	psn->friends = NULL;
 	psn->friend_requests_incoming = NULL;
 	psn->friend_requests_outgoing = NULL;
 
-	return ret;
+	return 0;
 }
 
-int psn_create_new_identity(struct psn_s *psn, char *username)
+int psn_connect(struct psn_s *psn)
+{
+	psn->mosq = mosquitto_new(psn->username, true, psn);
+	mosquitto_message_callback_set(psn->mosq, psn_message_callback);
+
+	if(psn->mosq == NULL) {
+		DEBUG("Could not create mosquitto instance.\n%s","");
+		return -1;
+	}
+
+	mosquitto_username_pw_set(psn->mosq, psn->username, psn->password);
+	if(mosquitto_connect(psn->mosq, psn->hostname, psn->port, 60)) {
+		DEBUG("Unable to connect.\n%s","");
+		return -1;
+	}
+
+	//subscribe to users topics
+	char topic[128];
+	sprintf(topic, "users/%s/#", psn->username);
+	mosquitto_subscribe(psn->mosq, NULL, topic, 1);
+
+	sprintf(topic, "chat/+/%s", psn->username);
+	mosquitto_subscribe(psn->mosq, NULL, topic, 1);
+
+	if(mosquitto_loop_start(psn->mosq) != MOSQ_ERR_SUCCESS) {
+		DEBUG("Loop start failed\n%s","");
+		return -1;
+	}
+
+	DEBUG("Connection successful\n%s", "");
+
+	return 0;
+}
+
+int psn_generate_new_key(struct psn_s *psn)
 {
 	int err;
-	
-	strcpy(psn->username, username);
 	
 	if ((err = rsa_make_key(0, 
 							find_prng("sprng"), 
 							1024/8, 65537, &psn->pk_key))
 	    != CRYPT_OK) {
-		printf("rsa_make_key failed: %s\n", error_to_string(err));
+		DEBUG("rsa_make_key failed: %s\n", error_to_string(err));
+		return -1;
 	}
 	return 0;
 }
 
-void my_message_callback(struct mosquitto *mosq, void *userdata, 
+
+int psn_set_server(struct psn_s *psn, char* hostname, int port)
+{
+	strcpy(psn->hostname, hostname);
+	psn->port = port;
+
+	return 0;
+}
+
+int psn_set_username(struct psn_s *psn, char *username, char *password)
+{
+	strcpy(psn->password, password);
+	strcpy(psn->username, username);
+	strcpy(psn->shown_name, username);
+
+	return 0;
+}
+
+int psn_set_shown_name(struct psn_s *psn, char *shown_name)
+{
+	strcpy(psn->shown_name, shown_name);
+	
+	return 0;
+}
+void psn_message_callback(struct mosquitto *mosq, void *userdata, 
 						 const struct mosquitto_message *message)
 {
-	if(message->payloadlen){
-		printf("%s %s\n", (char *) message->topic, (char *) message->payload);
-	}else{
-		printf("%s (null)\n", message->topic);
+	char **topics = NULL;
+	int topic_count;
+
+	struct psn_s *psn = (struct psn_s*) userdata;
+
+	mosquitto_sub_topic_tokenise(message->topic, &topics, &topic_count);
+
+	if(topic_count == 3) {
+		if(!strcmp(topics[0], "chat") && !strcmp(topics[2], psn->username) && message->payloadlen) {
+			//A message has been received
+			DEBUG("check if the sender(%s) of the incoming message is in friend list\n",topics[1]);
+
+			struct user_s *in_list = NULL;
+			HASH_FIND_STR(psn->friends, topics[1], in_list);
+
+			if(in_list != NULL) {
+				DEBUG("Sender is in list%s\n","");
+				//ensure NULL-Byte at end of the payload
+				((char*) message->payload)[message->payloadlen] = '\0';
+				printf("\r%s: %s\n> ",topics[1], message->payload);
+			} else {
+				DEBUG("Sender was not in list, doing nothing%s\n","");
+			}
+
+		}
 	}
+
+	if(topic_count == 4) {
+		if(!strcmp(topics[0], "users") && !strcmp(topics[2], "frequest")) {
+			//A Friend Request is incoming
+			struct user_s *from_list = NULL;
+			
+			HASH_FIND_STR(psn->friend_requests_incoming, topics[3], from_list);
+			if(from_list != NULL) {
+				//Friend is already in incoming friends list
+				//do nothing
+				mosquitto_sub_topic_tokens_free(&topics, topic_count);
+				return;
+			}
+
+			HASH_FIND_STR(psn->friends, topics[3], from_list);
+			if(from_list != NULL) {
+				//Friend is already in friends list
+				//do nothing
+
+				mosquitto_sub_topic_tokens_free(&topics, topic_count);
+				return;
+			}
+
+			HASH_FIND_STR(psn->friend_requests_outgoing, topics[3], from_list);
+			if(from_list != NULL) {
+				//Friend is already in outgoing friends list
+				//the friend has accepted the friend request
+				HASH_DEL(psn->friend_requests_outgoing, from_list);
+
+				struct user_s *new = (struct user_s*) malloc(sizeof(struct user_s));
+				
+				strcpy(new->name, topics[3]);
+				strcpy(new->shown_name, topics[3]);
+
+				HASH_ADD_STR(psn->friends, name, new);
+				printf("\r* %s has accepted your friend request\n> ", new->name);
+			
+				mosquitto_sub_topic_tokens_free(&topics, topic_count);
+				fflush(stdout);
+				return;			
+			}
+			//source is not in any list, so push it to incoming list
+			struct user_s *new = (struct user_s*)malloc(sizeof(struct user_s));
+			
+			strcpy(new->name, topics[3]);
+			strcpy(new->shown_name, topics[3]);
+
+			HASH_ADD_STR(psn->friend_requests_incoming, name, new);
+			printf("\r* %s sent you a friend request\n> ", new->name);
+		}
+	}
+
 	fflush(stdout);
+	mosquitto_sub_topic_tokens_free(&topics, topic_count);
+	return;			
 }
 
 int psn_make_friend_req(struct psn_s *psn , char *target, char *message)
 {
+	//build topic
+	char topic[128];
+	sprintf(topic, "users/%s/frequest/%s", target, psn->username);
+	
+	//get length of the message
+	int len = strlen(message);
+
+	//publish the friend request
+	mosquitto_publish(psn->mosq, NULL, topic, len,message , 1, false);
+
+	struct user_s *new = malloc(sizeof(struct user_s));
+	strcpy(new->name, target);
+	strcpy(new->shown_name, target);
+
+	HASH_ADD_STR(psn->friend_requests_outgoing, name, new);
 	return 0;
 }
 
 int psn_accept_friend_req(struct psn_s *psn, char *target)
 {
+	struct user_s *in_list = NULL;
+	HASH_FIND_STR(psn->friend_requests_incoming, target, in_list);
+	if(in_list == NULL)
+	{
+		DEBUG("Cannot accept %s, not in incoming list\n", target);
+		return -1;
+	}
+
+	HASH_DEL(psn->friend_requests_incoming, in_list);
+
+	//build topic
+	char topic[128];
+	sprintf(topic, "users/%s/frequest/%s", target, psn->username);
+
+	//publish the friend request
+	mosquitto_publish(psn->mosq, NULL, topic, 0,"", 1, false);
+
+	//add to friend list
+	HASH_ADD_STR(psn->friends, name, in_list);
 	return 0;
 }
 
 int psn_refuse_friend_req(struct psn_s *psn, char *target)
 {
+	//to refuse a friend request, delete the incoming frq
+	struct user_s *in_list;
+	HASH_FIND_STR(psn->friend_requests_incoming, target, in_list);
+
+	if(in_list == NULL)
+	{
+		//user was not in incoming list
+		return 0;
+	}
+
+	//delete user from incoming list
+	HASH_DEL(psn->friend_requests_incoming, in_list);
+	free(in_list);
 	return 0;
 }
 
-int psn_del_friend(struct psn_s *psn, char *target)
+int psn_delete_friend(struct psn_s *psn, char *target)
 {
+	struct user_s *in_list = NULL;
+
+	HASH_FIND_STR(psn->friends, target, in_list);
+	if(in_list == NULL)
+	{
+		//user was not in friend list
+		return -1;
+	}
+
+	//delete user from friend list
+	HASH_DEL(psn->friends, in_list);
+	free(in_list);
 	return 0;
 }
 
 int psn_send_message(struct psn_s *psn, char *target, char *message)
 {
+	struct user_s *in_list = NULL;
+	HASH_FIND_STR(psn->friends, target, in_list);
+
+	if(in_list == NULL) {
+		printf("*ERROR: target not in friend list\n");
+		return -1;
+	}
+	
+	int len = strlen(message);
+	//build topic
+	char topic[128];
+	sprintf(topic, "chat/%s/%s",psn->username, target);
+
+	mosquitto_publish(psn->mosq, NULL, topic, len, message, 1, false);
 	return 0;
 }
 

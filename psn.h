@@ -1,6 +1,8 @@
 #ifndef _PSN_H_
 #define _PSN_H_
 
+#define DEBUG_ 1
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <gmp.h>
@@ -19,6 +21,9 @@ struct psn_s
 
 	//user settings
 	char username[32];
+	char shown_name[32];
+
+	char password[32];
 	
 	//network settings
 	char hostname[256];
@@ -44,27 +49,23 @@ struct user_s
 	UT_hash_handle hh;
 };
 
-//friend list entry
-/*struct message_s
-{
-	int type;
+typedef enum psn_err_e { 	 	
+							PSN_ERR_USER_NOT_IN_FRIEND_LIST,
+				 			PSN_ERR_NO_CONN,
+				 			PSN_ERR_FREQUEST_PENDING,
+				 	   } psn_err;
 
-	struct user_s *dest;
-	struct user_s *src;
-	
-	void *content;
-	
-	UT_hash_handle hh;
-};*/
-
-//public
-int psn_init(struct psn_s *psn, char *config_file_path);
-int psn_create_new_identity(struct psn_s *psn, char *username);
-
+//public:
+int psn_init(struct psn_s *psn);
+int psn_connect(struct psn_s *psn);
+int psn_set_username(struct psn_s *psn, char *username, char* password);
+int psn_set_shown_name(struct psn_s *psn, char *shown_name);
+int psn_set_server(struct psn_s *psn, char* hostname, int port);
+int psn_generate_new_key(struct psn_s *psn);
 int psn_make_friend_req(struct psn_s *psn , char *target, char *message);
 int psn_accept_friend_req(struct psn_s *psn, char *target);
 int psn_refuse_friend_req(struct psn_s *psn, char *target);
-int psn_del_friend(struct psn_s *psn, char *target);
+int psn_delete_friend(struct psn_s *psn, char *target);
 int psn_send_message(struct psn_s *psn, char *target, char *message);
 int psn_get_friend_list(struct psn_s *psn);
 
@@ -72,5 +73,12 @@ int psn_get_friend_list(struct psn_s *psn);
 int psn_serialize_config(struct psn_s *psn, char *dest_str);
 int psn_deserialize_config(struct psn_s *psn, char *src_str);
 
-//send pixx etc
+//callbacks:
+void psn_message_callback(struct mosquitto *mosq, void *userdata, 
+						 const struct mosquitto_message *message);
+
+#define DEBUG(fmt, ...) \
+        do { if (DEBUG_) fprintf(stderr, "%s:%d:%s(): " fmt, __FILE__, \
+                                __LINE__, __func__, __VA_ARGS__); } while (0)
+
 #endif /* _PSN_H_ */

@@ -1,5 +1,7 @@
 EXECUTABLE = psn_cli
 
+TEST_EXE = psn_test
+
 OBJECTS = 	psn.o \
 			psn_cli.o \
 			init.o
@@ -46,7 +48,7 @@ run: $(EXECUTABLE)
 	-./$< 
 	@echo returned $$?
 
-test: $(EXECUTABLE)
+test: $(TEST_EXE)
 	@echo test
 
 stats: $(OBJECTS)

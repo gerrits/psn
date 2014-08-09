@@ -15,6 +15,8 @@ int init_mosquitto_lib()
 {
 	mosquitto_lib_init();
 	
+	
+	
 	return 0;
 }
 
