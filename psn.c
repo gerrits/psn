@@ -21,7 +21,12 @@ int psn_init(struct psn_s *psn)
 
 int psn_connect(struct psn_s *psn)
 {
-	psn->mosq = mosquitto_new(psn->username, true, psn);
+	if(psn->mosq == NULL) {
+		mosquitto_reinitialise(psn->mosq, psn->username, true, psn);
+	} else {
+		psn->mosq = mosquitto_new(psn->username, true, psn);
+	}
+	
 	mosquitto_message_callback_set(psn->mosq, psn_message_callback);
 
 	if(psn->mosq == NULL) {
@@ -50,6 +55,15 @@ int psn_connect(struct psn_s *psn)
 
 	DEBUG("Connection successful\n%s", "");
 
+	return 0;
+}
+
+int psn_disconnect(struct psn_s *psn)
+{
+	if(psn == NULL || psn->mosq == NULL) {
+		return -1;
+	}
+	mosquitto_disconnect(psn->mosq);
 	return 0;
 }
 
@@ -100,7 +114,6 @@ void psn_message_callback(struct mosquitto *mosq, void *userdata,
 	struct psn_s *psn = (struct psn_s*) userdata;
 
 	mosquitto_sub_topic_tokenise(message->topic, &topics, &topic_count);
-
 	if(topic_count == 3) {
 		if(!strcmp(topics[0], "chat") && !strcmp(topics[2], psn->username) && message->payloadlen) {
 			//A message has been received
@@ -230,7 +243,7 @@ int psn_refuse_friend_req(struct psn_s *psn, char *target)
 	if(in_list == NULL)
 	{
 		//user was not in incoming list
-		return 0;
+		return -1;
 	}
 
 	//delete user from incoming list
@@ -265,19 +278,37 @@ int psn_send_message(struct psn_s *psn, char *target, char *message)
 		printf("*ERROR: target not in friend list\n");
 		return -1;
 	}
+
 	
-	int len = strlen(message);
 	//build topic
 	char topic[128];
 	sprintf(topic, "chat/%s/%s",psn->username, target);
 
+	int len = strlen(message);
 	mosquitto_publish(psn->mosq, NULL, topic, len, message, 1, false);
 	return 0;
 }
 
-int psn_get_friend_list(struct psn_s *psn)
+int psn_get_friend_list(struct psn_s *psn, char ***friends)
 {
-	return 0;
+	struct user_s *s;
+	int i = 0;
+	int len = 0;
+
+	//count number of friends
+	for(s=psn->friends; s != NULL; s=s->hh.next) {
+		len++;
+    }
+
+    *friends = malloc(len * sizeof(char **));
+
+    for(s=psn->friends; s != NULL; s=s->hh.next) {
+    	*friends[i] = malloc(32 * sizeof(char));
+    	strcpy(*friends[i], s->name);
+    	i++;
+    }
+
+	return len;
 }
 
 int psn_serialize_config(struct psn_s *psn, char *dest_str)
@@ -328,6 +359,8 @@ int psn_serialize_config(struct psn_s *psn, char *dest_str)
 
 int psn_deserialize_config(struct psn_s *psn, char *src_str)
 {
+	//DEBUG("deserializing config, src_str: %s\n", src_str);
+
 	json_error_t error;
 	json_t *friend_arr;
 	int i;
@@ -335,11 +368,12 @@ int psn_deserialize_config(struct psn_s *psn, char *src_str)
 	json_t *root = json_loads(src_str, 0, &error);
 
 	strcpy(psn->username,json_string_value(json_object_get(root, "username")));
+	strcpy(psn->shown_name,json_string_value(json_object_get(root, "username")));
 	strcpy(psn->hostname,json_string_value(json_object_get(root, "hostname")));
 	psn->port = json_integer_value(json_object_get(root, "port"));
 
 	friend_arr = json_object_get(root, "friends");
-	for(i = 0; json_array_size(friend_arr); i++) {
+	for(i = 0; i < json_array_size(friend_arr); i++) {
 		struct user_s *new = (struct user_s *) malloc(sizeof(struct user_s));
 		json_t *new_obj = json_array_get(friend_arr, i);
 		strcpy(new->name, json_string_value(json_object_get(new_obj, "name")));
@@ -347,8 +381,10 @@ int psn_deserialize_config(struct psn_s *psn, char *src_str)
 		HASH_ADD_STR(psn->friends, name, new);
 	}
 
+
+
 	friend_arr = json_object_get(root, "friendrqsinc");
-	for(i = 0; json_array_size(friend_arr); i++) {
+	for(i = 0; i < json_array_size(friend_arr); i++) {
 		struct user_s *new = (struct user_s *) malloc(sizeof(struct user_s));
 		json_t *new_obj = json_array_get(friend_arr, i);
 		strcpy(new->name, json_string_value(json_object_get(new_obj, "name")));
@@ -357,7 +393,7 @@ int psn_deserialize_config(struct psn_s *psn, char *src_str)
 	}
 
 	friend_arr = json_object_get(root, "friendrqsout");
-	for(i = 0; json_array_size(friend_arr); i++) {
+	for(i = 0; i < json_array_size(friend_arr); i++) {
 		struct user_s *new = (struct user_s *) malloc(sizeof(struct user_s));
 		json_t *new_obj = json_array_get(friend_arr, i);
 		strcpy(new->name, json_string_value(json_object_get(new_obj, "name")));
@@ -365,5 +401,6 @@ int psn_deserialize_config(struct psn_s *psn, char *src_str)
 		HASH_ADD_STR(psn->friend_requests_outgoing, name, new);
 	}
 
+	//DEBUG("deserializing finished\n%s","");
 	return 0;
 }

@@ -1,7 +1,7 @@
 #ifndef _PSN_H_
 #define _PSN_H_
 
-#define DEBUG_ 1
+#define DEBUG_ 0
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -55,11 +55,77 @@ typedef enum psn_err_e {
 				 			PSN_ERR_FREQUEST_PENDING,
 				 	   } psn_err;
 
-//public:
+//public :
+
+/* 
+ * function psn_init
+ * description:
+ *  must be called before every other action with that instance
+ * parameters:
+ * 	struct psn_s *psn - pointer to the psn instance
+ * returns:
+ * 	int - 0 on success		
+ */
 int psn_init(struct psn_s *psn);
+
+/* 
+ * function psn_connect
+ * description:
+ *  connect to the psn broker
+ * parameters:
+ * 	struct psn_s *psn - pointer to the psn instance
+ * returns:
+ * 	int - 0 on success		
+ */
 int psn_connect(struct psn_s *psn);
+
+/* 
+ * function psn_disconnect
+ * description:
+ *  connect to the psn broker
+ * parameters:
+ * 	struct psn_s *psn - pointer to the psn instance
+ * returns:
+ * 	int - 0 on success		
+ */
+int psn_disconnect(struct psn_s *psn);
+
+/* 
+ * function psn_set_username
+ * description:
+ *  set the username and password for the login
+ * parameters:
+ * 	struct psn_s *psn - pointer to the psn instance
+ *  char *username - string containing the username to be used
+ *  char *password - string containing the password to be used
+ * returns:
+ * 	int - 0 on success			
+ */
 int psn_set_username(struct psn_s *psn, char *username, char* password);
+
+/* 
+ * function psn_set_shown_name
+ * description:
+ *  set the shown name
+ * parameters:
+ * 	struct psn_s *psn - pointer to the psn instance
+ *  char *shown_name - string containing the new shown_name
+ * returns:
+ * 	int - 0 on success			
+ */
 int psn_set_shown_name(struct psn_s *psn, char *shown_name);
+
+/* 
+ * function psn_set_server
+ * description:
+ *  set the hostname and the port of the server to connect to
+ * parameters:
+ * 	struct psn_s *psn - pointer to the psn instance
+ *  char *hostname - string containing the hostname/ip to be used
+ *  int port - integer containing the port to be used
+ * returns:
+ * 	int - 0 on success			
+ */
 int psn_set_server(struct psn_s *psn, char* hostname, int port);
 int psn_generate_new_key(struct psn_s *psn);
 int psn_make_friend_req(struct psn_s *psn , char *target, char *message);
@@ -67,13 +133,13 @@ int psn_accept_friend_req(struct psn_s *psn, char *target);
 int psn_refuse_friend_req(struct psn_s *psn, char *target);
 int psn_delete_friend(struct psn_s *psn, char *target);
 int psn_send_message(struct psn_s *psn, char *target, char *message);
-int psn_get_friend_list(struct psn_s *psn);
+int psn_get_friend_list(struct psn_s *psn, char ***friends);
 
-//private:
+//private :
 int psn_serialize_config(struct psn_s *psn, char *dest_str);
 int psn_deserialize_config(struct psn_s *psn, char *src_str);
 
-//callbacks:
+//callbacks :
 void psn_message_callback(struct mosquitto *mosq, void *userdata, 
 						 const struct mosquitto_message *message);
 
