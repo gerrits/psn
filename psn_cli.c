@@ -217,7 +217,7 @@ int psn_cli_print_help()
 {
     printf("* Usage:\n"
            "* set [ name | shown | server ] <str>\n"
-           "* show [ friends | user | network ] <str>\n"
+           "* show [ friends | user | network ]\n"
            "* add <username> <message>\n"
            "* delete <username>\n"
            "* accept <username>\n"
