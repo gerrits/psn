@@ -11,10 +11,13 @@ int main(int argc, const char *argv[])
     //init
     psn_init(&myPsn);
 
-    if (argc >= 2) {
+    if (argc >= 3) {
         if (!strcmp(argv[1], "-c")) {
-            psn_cli_load_file(&myPsn, argv[2]);
-            psn_connect(&myPsn);
+            if (!psn_cli_load_file(&myPsn, argv[2])) {
+                psn_connect(&myPsn);
+            } else {
+                printf("* ERROR: File not found\n");
+            }
         }
     }
 
@@ -43,7 +46,7 @@ int main(int argc, const char *argv[])
                 char *password = strtok(NULL, delims);
 
                 if (username == NULL || password == NULL) {
-                    printf("*ERROR: missing argument\n");
+                    printf("* ERROR: missing argument\n");
                     continue;
                 }
                 psn_set_username(&myPsn, username, password);
@@ -51,7 +54,7 @@ int main(int argc, const char *argv[])
                 //set shown name here
                 char *shown_name = strtok(NULL, delims);
                 if (shown_name == NULL) {
-                    printf("*ERROR: missing argument\n");
+                    printf("* ERROR: missing argument\n");
                     continue;
                 }
                 psn_set_shown_name(&myPsn, shown_name);
@@ -60,7 +63,7 @@ int main(int argc, const char *argv[])
                 char *hostname = strtok(NULL, delims);
                 char *port_str = strtok(NULL, delims);
                 if (hostname == NULL || port_str == NULL) {
-                    printf("*ERROR: missing argument\n");
+                    printf("* ERROR: missing argument\n");
                     continue;
                 }
                 int port = atoi(port_str);
@@ -72,12 +75,12 @@ int main(int argc, const char *argv[])
                 //----->
                 //set settings for other users here (shown_name etc)
             } else {
-                printf("*ERROR: wrong argument\n");
+                printf("* ERROR: wrong argument\n");
             }
         } else if (!strcmp(token, "show")) {
             token = strtok(NULL, delims);
             if (token == NULL) {
-                printf("*ERROR: missing argument\n");
+                printf("* ERROR: missing argument\n");
                 continue;
             }
             if (!strcmp(token, "friends")) {
@@ -89,14 +92,14 @@ int main(int argc, const char *argv[])
                 printf("username: %s\n"
                        "shown name: %s\n", myPsn.username, myPsn.shown_name);
             } else {
-                printf("*ERROR: wrong argument\n");
+                printf("* ERROR: wrong argument\n");
             }
         } else if (!strcmp(token, "add")) {
             //add user here
             char *target = strtok(NULL, delims);
             char *message = strtok(NULL, delims);
             if (target == NULL) {
-                printf("*ERROR: missing argument\n");
+                printf("* ERROR: missing argument\n");
                 continue;
             }
 
@@ -109,7 +112,7 @@ int main(int argc, const char *argv[])
             //accept friend request here
             char *target = strtok(NULL, delims);
             if (target == NULL) {
-                printf("*ERROR: missing argument\n");
+                printf("* ERROR: missing argument\n");
                 continue;
             }
             psn_accept_friend_req(&myPsn, target);
@@ -117,7 +120,7 @@ int main(int argc, const char *argv[])
             //refuse friend request here
             char *target = strtok(NULL, delims);
             if (target == NULL) {
-                printf("*ERROR: missing argument\n");
+                printf("* ERROR: missing argument\n");
                 continue;
             }
             psn_refuse_friend_req(&myPsn, target);
@@ -125,7 +128,7 @@ int main(int argc, const char *argv[])
             //delete friend here
             char *target = strtok(NULL, delims);
             if (target == NULL) {
-                printf("*ERROR: missing argument\n");
+                printf("* ERROR: missing argument\n");
                 continue;
             }
             psn_delete_friend(&myPsn, target);
@@ -134,7 +137,7 @@ int main(int argc, const char *argv[])
             char *target_user = strtok(NULL, delims);
             char *message = strtok(NULL, "");
             if (target_user == NULL || message == NULL) {
-                printf("*ERROR: missing argument\n");
+                printf("* ERROR: missing argument\n");
                 continue;
             }
             psn_send_message(&myPsn, target_user, message);
@@ -147,14 +150,14 @@ int main(int argc, const char *argv[])
         } else if (!strcmp(token, "load_file")) {
             char *filename = strtok(NULL, delims);
             if (filename == NULL) {
-                printf("*ERROR: missing argument\n");
+                printf("* ERROR: missing argument\n");
                 continue;
             }
             psn_cli_load_file(&myPsn, filename);
         } else if (!strcmp(token, "save_file")) {
             char *filename = strtok(NULL, delims);
             if (filename == NULL) {
-                printf("*ERROR: missing argument\n");
+                printf("* ERROR: missing argument\n");
                 continue;
             }
             psn_cli_save_file(&myPsn, filename);
@@ -176,6 +179,10 @@ int main(int argc, const char *argv[])
 int psn_cli_load_file(struct psn_s *psn, const char *filename)
 {
     FILE *file = fopen(filename, "r");
+
+    if (file == NULL) {
+        return -1;
+    }
 
     char config_string[2048];
     int len =   fread(config_string, 1, 2048, file);
