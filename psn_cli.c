@@ -71,6 +71,8 @@ int main(int argc, const char *argv[])
 
                 //----->
                 //set settings for other users here (shown_name etc)
+            } else {
+                printf("*ERROR: wrong argument\n");
             }
         } else if (!strcmp(token, "show")) {
             token = strtok(NULL, delims);
@@ -86,16 +88,23 @@ int main(int argc, const char *argv[])
             } else if (!strcmp(token, "user")) {
                 printf("username: %s\n"
                        "shown name: %s\n", myPsn.username, myPsn.shown_name);
+            } else {
+                printf("*ERROR: wrong argument\n");
             }
         } else if (!strcmp(token, "add")) {
             //add user here
             char *target = strtok(NULL, delims);
             char *message = strtok(NULL, delims);
-            if (target == NULL || message == NULL) {
+            if (target == NULL) {
                 printf("*ERROR: missing argument\n");
                 continue;
             }
-            psn_make_friend_req(&myPsn, target, message);
+
+            if (message != NULL) {
+                psn_make_friend_req(&myPsn, target, message);
+            } else {
+                psn_make_friend_req(&myPsn, target, "");
+            }
         } else if (!strcmp(token, "accept")) {
             //accept friend request here
             char *target = strtok(NULL, delims);
@@ -142,7 +151,6 @@ int main(int argc, const char *argv[])
                 continue;
             }
             psn_cli_load_file(&myPsn, filename);
-            psn_connect(&myPsn);
         } else if (!strcmp(token, "save_file")) {
             char *filename = strtok(NULL, delims);
             if (filename == NULL) {

@@ -1,25 +1,27 @@
 #include "psn.h"
 #include "init.h"
 
-int psn_init(struct psn_s *psn)
+static bool connected = false;
+
+psn_err psn_init(struct psn_s *psn)
 {
     if (init_tomcrypt_lib()) {
         printf("Init tomcrypt failed\n");
-        return -1;
+        return PSN_ERR_FAIL;
     }
     if (init_mosquitto_lib()) {
         printf("Init Mosquitto failed\n");
-        return -1;
+        return PSN_ERR_FAIL;
     }
     //init uthash
     psn->friends = NULL;
     psn->friend_requests_incoming = NULL;
     psn->friend_requests_outgoing = NULL;
 
-    return 0;
+    return PSN_ERR_SUCCESS;
 }
 
-int psn_connect(struct psn_s *psn)
+psn_err psn_connect(struct psn_s *psn)
 {
     if (psn->mosq == NULL) {
         mosquitto_reinitialise(psn->mosq, psn->username, true, psn);
@@ -31,13 +33,13 @@ int psn_connect(struct psn_s *psn)
 
     if (psn->mosq == NULL) {
         DEBUG("Could not create mosquitto instance.\n%s", "");
-        return -1;
+        return PSN_ERR_FAIL;
     }
 
     mosquitto_username_pw_set(psn->mosq, psn->username, psn->password);
     if (mosquitto_connect(psn->mosq, psn->hostname, psn->port, 60)) {
         DEBUG("Unable to connect.\n%s", "");
-        return -1;
+        return PSN_ERR_COULD_NOT_CONNECT;
     }
 
     //subscribe to users topics
@@ -50,24 +52,30 @@ int psn_connect(struct psn_s *psn)
 
     if (mosquitto_loop_start(psn->mosq) != MOSQ_ERR_SUCCESS) {
         DEBUG("Loop start failed\n%s", "");
-        return -1;
+        return PSN_ERR_FAIL;
     }
 
+    connected = true;
     DEBUG("Connection successful\n%s", "");
 
-    return 0;
+    return PSN_ERR_SUCCESS;
 }
 
-int psn_disconnect(struct psn_s *psn)
+psn_err psn_disconnect(struct psn_s *psn)
 {
     if (psn == NULL || psn->mosq == NULL) {
-        return -1;
+        return PSN_ERR_FAIL;
+    }
+    if (!connected) {
+        return PSN_ERR_ALREADY_CONNECTED;
     }
     mosquitto_disconnect(psn->mosq);
-    return 0;
+    mosquitto_loop_stop(psn->mosq, false);
+    connected = false;
+    return PSN_ERR_SUCCESS;
 }
 
-int psn_generate_new_key(struct psn_s *psn)
+psn_err psn_generate_new_key(struct psn_s *psn)
 {
     int err;
 
@@ -76,35 +84,49 @@ int psn_generate_new_key(struct psn_s *psn)
                             1024 / 8, 65537, &psn->pk_key))
         != CRYPT_OK) {
         DEBUG("rsa_make_key failed: %s\n", error_to_string(err));
-        return -1;
+        return PSN_ERR_FAIL;
     }
-    return 0;
+    return PSN_ERR_SUCCESS;
 }
 
 
-int psn_set_server(struct psn_s *psn, char *hostname, int port)
+psn_err psn_set_server(struct psn_s *psn, char *hostname, int port)
 {
+    if (psn == NULL) {
+        DEBUG("psn instance not valid\n%s", "");
+        return PSN_ERR_FAIL;
+    }
+
     strcpy(psn->hostname, hostname);
     psn->port = port;
 
-    return 0;
+    return PSN_ERR_SUCCESS;
 }
 
-int psn_set_username(struct psn_s *psn, char *username, char *password)
+psn_err psn_set_username(struct psn_s *psn, char *username, char *password)
 {
+    if (psn == NULL) {
+        DEBUG("psn instance not valid\n%s", "");
+        return PSN_ERR_FAIL;
+    }
     strcpy(psn->password, password);
     strcpy(psn->username, username);
     strcpy(psn->shown_name, username);
 
-    return 0;
+    return PSN_ERR_SUCCESS;
 }
 
-int psn_set_shown_name(struct psn_s *psn, char *shown_name)
+psn_err psn_set_shown_name(struct psn_s *psn, char *shown_name)
 {
+    if (psn == NULL) {
+        DEBUG("psn instance not valid\n%s", "");
+        return PSN_ERR_FAIL;
+    }
     strcpy(psn->shown_name, shown_name);
 
-    return 0;
+    return PSN_ERR_SUCCESS;
 }
+
 void psn_message_callback(struct mosquitto *mosq, void *userdata,
                           const struct mosquitto_message *message)
 {
@@ -190,8 +212,23 @@ void psn_message_callback(struct mosquitto *mosq, void *userdata,
     return;
 }
 
-int psn_make_friend_req(struct psn_s *psn , char *target, char *message)
+psn_err psn_make_friend_req(struct psn_s *psn , char *target, char *message)
 {
+    if (psn == NULL) {
+        DEBUG("psn instance not valid\n%s", "");
+        return PSN_ERR_FAIL;
+    }
+
+    if (psn->mosq == NULL) {
+        DEBUG("mosquitto instance not valid\n%s", "");
+        return PSN_ERR_FAIL;
+    }
+
+    if (!connected) {
+        printf("* ERROR: not connected\n");
+        return PSN_ERR_NOT_CONNECTED;
+    }
+
     //build topic
     char topic[128];
     sprintf(topic, "users/%s/frequest/%s", target, psn->username);
@@ -207,16 +244,30 @@ int psn_make_friend_req(struct psn_s *psn , char *target, char *message)
     strcpy(new->shown_name, target);
 
     HASH_ADD_STR(psn->friend_requests_outgoing, name, new);
-    return 0;
+    return PSN_ERR_SUCCESS;
 }
 
-int psn_accept_friend_req(struct psn_s *psn, char *target)
+psn_err psn_accept_friend_req(struct psn_s *psn, char *target)
 {
+    if (psn == NULL) {
+        DEBUG("psn instance not valid\n%s", "");
+        return PSN_ERR_FAIL;
+    }
+
+    if (psn->mosq == NULL) {
+        DEBUG("mosquitto instance not valid\n%s", "");
+        return PSN_ERR_FAIL;
+    }
+    if (!connected) {
+        printf("* ERROR: not connected\n");
+        return PSN_ERR_NOT_CONNECTED;
+    }
+
     struct user_s *in_list = NULL;
     HASH_FIND_STR(psn->friend_requests_incoming, target, in_list);
     if (in_list == NULL) {
         DEBUG("Cannot accept %s, not in incoming list\n", target);
-        return -1;
+        return PSN_ERR_USER_NOT_IN_INCOMING_FRIEND_LIST;
     }
 
     HASH_DEL(psn->friend_requests_incoming, in_list);
@@ -230,50 +281,67 @@ int psn_accept_friend_req(struct psn_s *psn, char *target)
 
     //add to friend list
     HASH_ADD_STR(psn->friends, name, in_list);
-    return 0;
+    return PSN_ERR_SUCCESS;
 }
 
-int psn_refuse_friend_req(struct psn_s *psn, char *target)
+psn_err psn_refuse_friend_req(struct psn_s *psn, char *target)
 {
+    if (psn == NULL) {
+        DEBUG("psn instance not valid\n%s", "");
+        return PSN_ERR_FAIL;
+    }
+
     //to refuse a friend request, delete the incoming frq
     struct user_s *in_list;
     HASH_FIND_STR(psn->friend_requests_incoming, target, in_list);
 
     if (in_list == NULL) {
         //user was not in incoming list
-        return -1;
+        return PSN_ERR_USER_NOT_IN_INCOMING_FRIEND_LIST;
     }
 
     //delete user from incoming list
     HASH_DEL(psn->friend_requests_incoming, in_list);
     free(in_list);
-    return 0;
+    return PSN_ERR_SUCCESS;
 }
 
-int psn_delete_friend(struct psn_s *psn, char *target)
+psn_err psn_delete_friend(struct psn_s *psn, char *target)
 {
+    if (psn == NULL) {
+        DEBUG("psn instance not valid\n%s", "");
+        return PSN_ERR_FAIL;
+    }
     struct user_s *in_list = NULL;
 
     HASH_FIND_STR(psn->friends, target, in_list);
     if (in_list == NULL) {
         //user was not in friend list
-        return -1;
+        return PSN_ERR_USER_NOT_IN_FRIEND_LIST;
     }
 
     //delete user from friend list
     HASH_DEL(psn->friends, in_list);
     free(in_list);
-    return 0;
+    return PSN_ERR_SUCCESS;
 }
 
-int psn_send_message(struct psn_s *psn, char *target, char *message)
+psn_err psn_send_message(struct psn_s *psn, char *target, char *message)
 {
+    if (psn == NULL) {
+        DEBUG("psn instance not valid\n%s", "");
+        return PSN_ERR_FAIL;
+    }
+    if (!connected) {
+        printf("*ERROR: not connected\n");
+        return PSN_ERR_NOT_CONNECTED;
+    }
     struct user_s *in_list = NULL;
     HASH_FIND_STR(psn->friends, target, in_list);
 
     if (in_list == NULL) {
         printf("*ERROR: target not in friend list\n");
-        return -1;
+        return PSN_ERR_USER_NOT_IN_FRIEND_LIST;
     }
 
 
@@ -283,7 +351,7 @@ int psn_send_message(struct psn_s *psn, char *target, char *message)
 
     int len = strlen(message);
     mosquitto_publish(psn->mosq, NULL, topic, len, message, 1, false);
-    return 0;
+    return PSN_ERR_SUCCESS;
 }
 
 int psn_get_friend_list(struct psn_s *psn, char ***friends)
@@ -308,8 +376,12 @@ int psn_get_friend_list(struct psn_s *psn, char ***friends)
     return len;
 }
 
-int psn_serialize_config(struct psn_s *psn, char *dest_str)
+psn_err psn_serialize_config(struct psn_s *psn, char *dest_str)
 {
+    if (psn == NULL) {
+        DEBUG("psn instance not valid\n%s", "");
+        return PSN_ERR_FAIL;
+    }
     json_t *root = json_object();
     struct user_s *s;
 
@@ -351,13 +423,15 @@ int psn_serialize_config(struct psn_s *psn, char *dest_str)
 
     free(json_result);
 
-    return 0;
+    return PSN_ERR_SUCCESS;
 }
 
-int psn_deserialize_config(struct psn_s *psn, char *src_str)
+psn_err psn_deserialize_config(struct psn_s *psn, char *src_str)
 {
-    //DEBUG("deserializing config, src_str: %s\n", src_str);
-
+    if (psn == NULL) {
+        DEBUG("psn instance not valid\n%s", "");
+        return PSN_ERR_FAIL;
+    }
     json_error_t error;
     json_t *friend_arr;
     int i;
@@ -399,5 +473,5 @@ int psn_deserialize_config(struct psn_s *psn, char *src_str)
     }
 
     //DEBUG("deserializing finished\n%s","");
-    return 0;
+    return PSN_ERR_SUCCESS;
 }
