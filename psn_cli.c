@@ -198,8 +198,10 @@ int psn_cli_print_friend_list(struct psn_s *psn)
 
     for (int i = 0; i < len; i++) {
         printf("* %s\n", friends[i]);
+        free(friends[i]);
     }
 
+    free(friends);
     return 0;
 }
 
