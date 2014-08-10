@@ -8,12 +8,12 @@ int main(int argc, const char *argv[])
     struct psn_s myPsn;
     int end = 0;
 
-    //init
+    //init psn instance
     psn_init(&myPsn);
 
     if (argc >= 3) {
         if (!strcmp(argv[1], "-c")) {
-            if (!psn_cli_load_file(&myPsn, argv[2])) {
+            if (psn_cli_load_file(&myPsn, argv[2])) {
                 psn_connect(&myPsn);
             } else {
                 printf("* ERROR: File not found\n");
@@ -222,7 +222,7 @@ int psn_cli_print_friend_list(struct psn_s *psn)
 
 int psn_cli_print_help()
 {
-    printf("* Usage:\n"
+    printf("* Commands:\n"
            "* set [ name | shown | server ] <str>\n"
            "* show [ friends | user | network ]\n"
            "* add <username> <message>\n"

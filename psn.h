@@ -53,20 +53,24 @@ typedef enum psn_err_e {
     PSN_ERR_FAIL
 } psn_err;
 
-
 psn_err psn_init(struct psn_s *psn);
+psn_err psn_free(struct psn_s *psn);
+
+psn_err psn_generate_new_key(struct psn_s *psn);
+
 psn_err psn_connect(struct psn_s *psn);
 psn_err psn_disconnect(struct psn_s *psn);
+
 psn_err psn_set_username(struct psn_s *psn, char *username, char *password);
 psn_err psn_set_shown_name(struct psn_s *psn, char *shown_name);
 psn_err psn_set_server(struct psn_s *psn, char *hostname, int port);
-psn_err psn_generate_new_key(struct psn_s *psn);
+int psn_get_friend_list(struct psn_s *psn, char ***friends);
+
 psn_err psn_make_friend_req(struct psn_s *psn , char *target, char *message);
 psn_err psn_accept_friend_req(struct psn_s *psn, char *target);
 psn_err psn_refuse_friend_req(struct psn_s *psn, char *target);
 psn_err psn_delete_friend(struct psn_s *psn, char *target);
 psn_err psn_send_message(struct psn_s *psn, char *target, char *message);
-int psn_get_friend_list(struct psn_s *psn, char ***friends);
 
 //private :
 psn_err psn_serialize_config(struct psn_s *psn, char *dest_str);

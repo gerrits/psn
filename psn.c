@@ -6,13 +6,14 @@ static bool connected = false;
 psn_err psn_init(struct psn_s *psn)
 {
     if (init_tomcrypt_lib()) {
-        printf("Init tomcrypt failed\n");
+        printf("* ERROR: libtomcrypt init failed.\n");
         return PSN_ERR_FAIL;
     }
     if (init_mosquitto_lib()) {
-        printf("Init Mosquitto failed\n");
+        printf("* ERROR: libmosquitto init failed\n");
         return PSN_ERR_FAIL;
     }
+
     //init uthash
     psn->friends = NULL;
     psn->friend_requests_incoming = NULL;
@@ -64,9 +65,11 @@ psn_err psn_connect(struct psn_s *psn)
 psn_err psn_disconnect(struct psn_s *psn)
 {
     if (psn == NULL || psn->mosq == NULL) {
+        DEBUG("psn or psn->mosq instance invalid\n%s", "");
         return PSN_ERR_FAIL;
     }
     if (!connected) {
+        DEBUG("already connected\n%s", "");
         return PSN_ERR_ALREADY_CONNECTED;
     }
     mosquitto_disconnect(psn->mosq);
@@ -473,5 +476,34 @@ psn_err psn_deserialize_config(struct psn_s *psn, char *src_str)
     }
 
     //DEBUG("deserializing finished\n%s","");
+    return PSN_ERR_SUCCESS;
+}
+
+psn_err psn_free(struct psn_s *psn)
+{
+    if (psn == NULL) {
+        DEBUG("no valid psn instance%s\n", "");
+        return PSN_ERR_FAIL;
+    }
+
+    if (psn->mosq != NULL) {
+        mosquitto_destroy(psn->mosq);
+    }
+
+    //clear userlsts
+    struct user_s *s;
+    for (s = psn->friends; s != NULL; s = s->hh.next) {
+        HASH_DEL(psn->friends, s);
+        free(s);
+    }
+    for (s = psn->friend_requests_incoming; s != NULL; s = s->hh.next) {
+        HASH_DEL(psn->friend_requests_incoming, s);
+        free(s);
+    }
+    for (s = psn->friend_requests_outgoing; s != NULL; s = s->hh.next) {
+        HASH_DEL(psn->friend_requests_outgoing, s);
+        free(s);
+    }
+
     return PSN_ERR_SUCCESS;
 }
