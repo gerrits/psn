@@ -2,29 +2,30 @@ EXECUTABLE = psn_cli
 
 TEST_EXE = psn_test
 
-OBJECTS = 	psn.o \
-			psn_cli.o \
-			init.o
+OBJECTS =   psn.o \
+            psn_cli.o \
+            init.o
 
 OTHER_OBJECTS = jansson/src/lib/libjansson.a \
-				mosquitto/lib/libmosquitto.a \
-				libtomcrypt/libtomcrypt.a
+                mosquitto/lib/libmosquitto.a \
+                libtomcrypt/libtomcrypt.a 
 
 LIBFLAGS = -DUSE_GMP -DGMP_DESC
 
-CC 		= 	gcc
+CC      =   gcc
 
-CFLAGS 	= 	-Wall -Wextra -std=c99 $(LIBFLAGS)
+CFLAGS 	=   -Wall -Wextra -std=c99 $(LIBFLAGS)
 
 
-IFLAGS  = 	-Imosquitto/lib \
-			-Iuthash/src \
-			-Ijansson/src \
-			-Ilibtomcrypt/src/headers/
+IFLAGS  =   -Imosquitto/lib \
+            -Iuthash/src \
+            -Ijansson/src \
+            -Ilibtomcrypt/src/headers/
 
-LDFLAGS = 	-lssl \
-			-lgmp \
-			-lcares
+
+LDFLAGS =   -lssl \
+            -lgmp \
+            -lcares
 
 all: $(EXECUTABLE)
 
@@ -52,7 +53,7 @@ test: $(TEST_EXE)
 	@echo test
 
 stats: $(OBJECTS)
-	@cloc --exclude-dir=uthash,mosquitto,libtomcrypt,jansson,config,docs,.git --exclude-lang=D .
+	@cloc --exclude-dir=uthash,mosquitto,libtomcrypt,jansson,config,docs,.git --exclude-lang=D,Javascript .
 
 clean: 
 	-rm $(EXECUTABLE)
