@@ -167,7 +167,7 @@ int main(int argc, const char *argv[])
         } else if (!strcmp(token, "usage") || !strcmp(token, "help")) {
             psn_cli_print_help();
         } else {
-            printf("%s: command not found\n", token);
+            printf("%s: command not found type 'usage' for help\n", token);
         }
     }
     return 0;
