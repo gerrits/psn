@@ -141,6 +141,18 @@ int main(int argc, const char *argv[])
                 continue;
             }
             psn_send_message(&myPsn, target_user, message);
+        } else if (!strcmp(token, "enc")) {
+            char *target_user = strtok(NULL, delims);
+            char *message = strtok(NULL, "");
+
+            if (target_user == NULL || message == NULL) {
+                printf("* ERROR: missing argument\n");
+                continue;
+            }
+            psn_send_encrypted_message(&myPsn, target_user, message);
+
+        } else if (!strcmp(token, "genkey")) {
+            psn_generate_new_key(&myPsn);
         } else if (!strcmp(token, "connect")) {
             //connect to server here
             psn_connect(&myPsn);

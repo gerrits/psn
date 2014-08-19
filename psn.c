@@ -1,9 +1,8 @@
 #include "psn.h"
-#include "init.h"
 
 static bool connected = false;
 
-psn_err psn_init(struct psn_s *psn)
+psn_err psn_init(psn_t *psn)
 {
     if (init_tomcrypt_lib()) {
         printf("* ERROR: libtomcrypt init failed.\n");
@@ -22,7 +21,7 @@ psn_err psn_init(struct psn_s *psn)
     return PSN_ERR_SUCCESS;
 }
 
-psn_err psn_connect(struct psn_s *psn)
+psn_err psn_connect(psn_t *psn)
 {
     if (psn->mosq == NULL) {
         mosquitto_reinitialise(psn->mosq, psn->username, true, psn);
@@ -62,7 +61,7 @@ psn_err psn_connect(struct psn_s *psn)
     return PSN_ERR_SUCCESS;
 }
 
-psn_err psn_disconnect(struct psn_s *psn)
+psn_err psn_disconnect(psn_t *psn)
 {
     if (psn == NULL || psn->mosq == NULL) {
         DEBUG("psn or psn->mosq instance invalid\n%s", "");
@@ -78,7 +77,7 @@ psn_err psn_disconnect(struct psn_s *psn)
     return PSN_ERR_SUCCESS;
 }
 
-psn_err psn_generate_new_key(struct psn_s *psn)
+psn_err psn_generate_new_key(psn_t *psn)
 {
     int err;
 
@@ -92,8 +91,34 @@ psn_err psn_generate_new_key(struct psn_s *psn)
     return PSN_ERR_SUCCESS;
 }
 
+psn_err psn_send_encrypted_message(psn_t *psn, char *target,
+                                   char *plain_message)
+{
+    int err;
+    unsigned char encrypted[4096];
+    unsigned long outlen = sizeof(encrypted);
+    unsigned long inlen = strlen(plain_message) - 1;
 
-psn_err psn_set_server(struct psn_s *psn, char *hostname, int port)
+    if ((err = rsa_encrypt_key((unsigned char *) plain_message,
+                               inlen, encrypted, &outlen,
+                               NULL, 0,
+                               NULL, find_prng("sprng"),
+                               find_hash("sha1"),
+                               &psn->pk_key)
+        ) != CRYPT_OK) {
+        DEBUG("rsa_encrypt_key failed: %s\n", error_to_string(err));
+        return PSN_ERR_CRYPT_FAIL;
+    }
+
+    //build topic
+    char topic[128];
+    sprintf(topic, "chat/%s/%s", psn->username, target);
+    mosquitto_publish(psn->mosq, NULL, topic, outlen, encrypted, 1, false);
+
+    return PSN_ERR_SUCCESS;
+}
+
+psn_err psn_set_server(psn_t *psn, char *hostname, int port)
 {
     if (psn == NULL) {
         DEBUG("psn instance not valid\n%s", "");
@@ -106,7 +131,7 @@ psn_err psn_set_server(struct psn_s *psn, char *hostname, int port)
     return PSN_ERR_SUCCESS;
 }
 
-psn_err psn_set_username(struct psn_s *psn, char *username, char *password)
+psn_err psn_set_username(psn_t *psn, char *username, char *password)
 {
     if (psn == NULL) {
         DEBUG("psn instance not valid\n%s", "");
@@ -119,7 +144,7 @@ psn_err psn_set_username(struct psn_s *psn, char *username, char *password)
     return PSN_ERR_SUCCESS;
 }
 
-psn_err psn_set_shown_name(struct psn_s *psn, char *shown_name)
+psn_err psn_set_shown_name(psn_t *psn, char *shown_name)
 {
     if (psn == NULL) {
         DEBUG("psn instance not valid\n%s", "");
@@ -130,28 +155,30 @@ psn_err psn_set_shown_name(struct psn_s *psn, char *shown_name)
     return PSN_ERR_SUCCESS;
 }
 
-void psn_message_callback(struct mosquitto *mosq, void *userdata,
+void psn_message_callback(struct mosquitto *mosq __attribute__((unused)),
+                          void *userdata,
                           const struct mosquitto_message *message)
 {
     char **topics = NULL;
     int topic_count;
 
     struct psn_s *psn = (struct psn_s *) userdata;
-
     mosquitto_sub_topic_tokenise(message->topic, &topics, &topic_count);
     if (topic_count == 3) {
-        if (!strcmp(topics[0], "chat") && !strcmp(topics[2], psn->username) && message->payloadlen) {
+        if (!strcmp(topics[0], "chat") &&
+            !strcmp(topics[2], psn->username) &&
+            message->payloadlen) {
             //A message has been received
             DEBUG("check if the sender(%s) of the incoming message is in friend list\n", topics[1]);
 
-            struct user_s *in_list = NULL;
+            user_t *in_list = NULL;
             HASH_FIND_STR(psn->friends, topics[1], in_list);
 
             if (in_list != NULL) {
                 DEBUG("Sender is in list%s\n", "");
                 //ensure NULL-Byte at end of the payload
                 ((char *) message->payload)[message->payloadlen] = '\0';
-                printf("\r%s: %s\n> ", topics[1], message->payload);
+                printf("\r%s: %s\n> ", topics[1], (char *)message->payload);
             } else {
                 DEBUG("Sender was not in list, doing nothing%s\n", "");
             }
@@ -162,7 +189,7 @@ void psn_message_callback(struct mosquitto *mosq, void *userdata,
     if (topic_count == 4) {
         if (!strcmp(topics[0], "users") && !strcmp(topics[2], "frequest")) {
             //A Friend Request is incoming
-            struct user_s *from_list = NULL;
+            user_t *from_list = NULL;
 
             HASH_FIND_STR(psn->friend_requests_incoming, topics[3], from_list);
             if (from_list != NULL) {
@@ -187,20 +214,23 @@ void psn_message_callback(struct mosquitto *mosq, void *userdata,
                 //the friend has accepted the friend request
                 HASH_DEL(psn->friend_requests_outgoing, from_list);
 
-                struct user_s *new = (struct user_s *) malloc(sizeof(struct user_s));
+                user_t *new = (user_t *)
+                              malloc(sizeof(user_t));
 
                 strcpy(new->name, topics[3]);
                 strcpy(new->shown_name, topics[3]);
 
                 HASH_ADD_STR(psn->friends, name, new);
-                printf("\r* %s has accepted your friend request\n> ", new->name);
+                printf("\r* %s has accepted your friend request\n> ",
+                       new->name);
 
                 mosquitto_sub_topic_tokens_free(&topics, topic_count);
                 fflush(stdout);
                 return;
             }
             //source is not in any list, so push it to incoming list
-            struct user_s *new = (struct user_s *)malloc(sizeof(struct user_s));
+            user_t *new = (user_t *)
+                          malloc(sizeof(user_t));
 
             strcpy(new->name, topics[3]);
             strcpy(new->shown_name, topics[3]);
@@ -212,10 +242,12 @@ void psn_message_callback(struct mosquitto *mosq, void *userdata,
 
     fflush(stdout);
     mosquitto_sub_topic_tokens_free(&topics, topic_count);
+
+
     return;
 }
 
-psn_err psn_make_friend_req(struct psn_s *psn , char *target, char *message)
+psn_err psn_make_friend_req(psn_t *psn , char *target, char *message)
 {
     if (psn == NULL) {
         DEBUG("psn instance not valid\n%s", "");
@@ -242,7 +274,7 @@ psn_err psn_make_friend_req(struct psn_s *psn , char *target, char *message)
     //publish the friend request
     mosquitto_publish(psn->mosq, NULL, topic, len, message , 1, false);
 
-    struct user_s *new = malloc(sizeof(struct user_s));
+    user_t *new = malloc(sizeof(user_t));
     strcpy(new->name, target);
     strcpy(new->shown_name, target);
 
@@ -250,7 +282,7 @@ psn_err psn_make_friend_req(struct psn_s *psn , char *target, char *message)
     return PSN_ERR_SUCCESS;
 }
 
-psn_err psn_accept_friend_req(struct psn_s *psn, char *target)
+psn_err psn_accept_friend_req(psn_t *psn, char *target)
 {
     if (psn == NULL) {
         DEBUG("psn instance not valid\n%s", "");
@@ -266,7 +298,7 @@ psn_err psn_accept_friend_req(struct psn_s *psn, char *target)
         return PSN_ERR_NOT_CONNECTED;
     }
 
-    struct user_s *in_list = NULL;
+    user_t *in_list = NULL;
     HASH_FIND_STR(psn->friend_requests_incoming, target, in_list);
     if (in_list == NULL) {
         DEBUG("Cannot accept %s, not in incoming list\n", target);
@@ -287,7 +319,7 @@ psn_err psn_accept_friend_req(struct psn_s *psn, char *target)
     return PSN_ERR_SUCCESS;
 }
 
-psn_err psn_refuse_friend_req(struct psn_s *psn, char *target)
+psn_err psn_refuse_friend_req(psn_t *psn, char *target)
 {
     if (psn == NULL) {
         DEBUG("psn instance not valid\n%s", "");
@@ -295,7 +327,7 @@ psn_err psn_refuse_friend_req(struct psn_s *psn, char *target)
     }
 
     //to refuse a friend request, delete the incoming frq
-    struct user_s *in_list;
+    user_t *in_list;
     HASH_FIND_STR(psn->friend_requests_incoming, target, in_list);
 
     if (in_list == NULL) {
@@ -309,13 +341,13 @@ psn_err psn_refuse_friend_req(struct psn_s *psn, char *target)
     return PSN_ERR_SUCCESS;
 }
 
-psn_err psn_delete_friend(struct psn_s *psn, char *target)
+psn_err psn_delete_friend(psn_t *psn, char *target)
 {
     if (psn == NULL) {
         DEBUG("psn instance not valid\n%s", "");
         return PSN_ERR_FAIL;
     }
-    struct user_s *in_list = NULL;
+    user_t *in_list = NULL;
 
     HASH_FIND_STR(psn->friends, target, in_list);
     if (in_list == NULL) {
@@ -329,7 +361,7 @@ psn_err psn_delete_friend(struct psn_s *psn, char *target)
     return PSN_ERR_SUCCESS;
 }
 
-psn_err psn_send_message(struct psn_s *psn, char *target, char *message)
+psn_err psn_send_message(psn_t *psn, char *target, char *message)
 {
     if (psn == NULL) {
         DEBUG("psn instance not valid\n%s", "");
@@ -339,7 +371,7 @@ psn_err psn_send_message(struct psn_s *psn, char *target, char *message)
         printf("*ERROR: not connected\n");
         return PSN_ERR_NOT_CONNECTED;
     }
-    struct user_s *in_list = NULL;
+    user_t *in_list = NULL;
     HASH_FIND_STR(psn->friends, target, in_list);
 
     if (in_list == NULL) {
@@ -357,9 +389,9 @@ psn_err psn_send_message(struct psn_s *psn, char *target, char *message)
     return PSN_ERR_SUCCESS;
 }
 
-int psn_get_friend_list(struct psn_s *psn, char ***friends)
+int psn_get_friend_list(psn_t *psn, char ***friends)
 {
-    struct user_s *s;
+    user_t *s;
     int i = 0;
     int len = 0;
 
@@ -379,24 +411,70 @@ int psn_get_friend_list(struct psn_s *psn, char ***friends)
     return len;
 }
 
-psn_err psn_serialize_config(struct psn_s *psn, char *dest_str)
+void buf_to_hex_str(unsigned char *buf_in, unsigned int inlen,
+                    char *hex_out, unsigned long *outlen)
+{
+    if (*outlen < (inlen * 2) + 1) {
+        DEBUG("buffer too small. %s\n", "");
+        return;
+    }
+
+    *outlen = 0;
+    for (unsigned int i = 0; i < inlen; i++) {
+        hex_out += sprintf(hex_out, "%02x", buf_in[i]);
+        *outlen += 2;
+    }
+
+    hex_out[*outlen] = '\0';
+
+    //printf("%s\n", hex_out);
+}
+
+void hex_str_to_buf(char *hex_in, unsigned int inlen,
+                    unsigned char *buf_out, unsigned int *outlen)
+{
+    if (*outlen < ((inlen - 1) / 2)) {
+        DEBUG("buffer too small%s\n", "");
+        return;
+    }
+
+    *outlen = 0;
+    unsigned int current;
+    for (unsigned int i = 0; i < (inlen / 2); i++) {
+        sscanf(hex_in, "%02x", &current);
+        buf_out[i] = current;
+        hex_in += 2;
+        (*outlen)++;
+    }
+    return;
+}
+
+psn_err psn_serialize_config(psn_t *psn, char *dest_str)
 {
     if (psn == NULL) {
         DEBUG("psn instance not valid\n%s", "");
         return PSN_ERR_FAIL;
     }
+
+    unsigned char pk_key_str[2048];
+    unsigned long keylen = sizeof(pk_key_str);
+    char pk_hex[4097];
+    unsigned long hex_len = sizeof(pk_hex);
+
     json_t *root = json_object();
-    struct user_s *s;
+    user_t *s;
 
     json_object_set_new(root, "username", json_string(psn->username));
     json_object_set_new(root, "hostname", json_string(psn->hostname));
     json_object_set_new(root, "port", json_integer(psn->port));
+    //  json_object_set_new(root, "key", json_string())
 
     json_t *friend_list = json_array();
     for (s = psn->friends; s != NULL; s = s->hh.next) {
         json_t *new_obj = json_object();
         json_object_set_new(new_obj, "name", json_string(s->name));
         json_object_set_new(new_obj, "shown_name", json_string(s->shown_name));
+
         json_array_append(friend_list, new_obj);
     }
 
@@ -420,6 +498,11 @@ psn_err psn_serialize_config(struct psn_s *psn, char *dest_str)
     json_object_set_new(root, "friendrqsinc", friend_req_i_list);
     json_object_set_new(root, "friendrqsout", friend_req_o_list);
 
+    rsa_export(pk_key_str, &keylen, PK_PRIVATE, &psn->pk_key);
+    buf_to_hex_str(pk_key_str, keylen, pk_hex, &hex_len);
+
+    json_object_set_new(root, "privkey", json_string(pk_hex));
+
     char *json_result = json_dumps(root, 0);
 
     strcpy(dest_str, json_result);
@@ -429,7 +512,7 @@ psn_err psn_serialize_config(struct psn_s *psn, char *dest_str)
     return PSN_ERR_SUCCESS;
 }
 
-psn_err psn_deserialize_config(struct psn_s *psn, char *src_str)
+psn_err psn_deserialize_config(psn_t *psn, char *src_str)
 {
     if (psn == NULL) {
         DEBUG("psn instance not valid\n%s", "");
@@ -437,49 +520,62 @@ psn_err psn_deserialize_config(struct psn_s *psn, char *src_str)
     }
     json_error_t error;
     json_t *friend_arr;
-    int i;
+    unsigned int i;
 
     json_t *root = json_loads(src_str, 0, &error);
 
-    strcpy(psn->username, json_string_value(json_object_get(root, "username")));
-    strcpy(psn->shown_name, json_string_value(json_object_get(root, "username")));
-    strcpy(psn->hostname, json_string_value(json_object_get(root, "hostname")));
+    strcpy(psn->username,
+           json_string_value(json_object_get(root, "username")));
+    strcpy(psn->shown_name,
+           json_string_value(json_object_get(root, "username")));
+    strcpy(psn->hostname,
+           json_string_value(json_object_get(root, "hostname")));
+
     psn->port = json_integer_value(json_object_get(root, "port"));
 
     friend_arr = json_object_get(root, "friends");
     for (i = 0; i < json_array_size(friend_arr); i++) {
-        struct user_s *new = (struct user_s *) malloc(sizeof(struct user_s));
+        user_t *new = (user_t *) malloc(sizeof(user_t));
         json_t *new_obj = json_array_get(friend_arr, i);
         strcpy(new->name, json_string_value(json_object_get(new_obj, "name")));
-        strcpy(new->shown_name, json_string_value(json_object_get(new_obj, "shown_name")));
+        strcpy(new->shown_name,
+               json_string_value(json_object_get(new_obj, "shown_name")));
         HASH_ADD_STR(psn->friends, name, new);
     }
 
-
-
     friend_arr = json_object_get(root, "friendrqsinc");
     for (i = 0; i < json_array_size(friend_arr); i++) {
-        struct user_s *new = (struct user_s *) malloc(sizeof(struct user_s));
+        user_t *new = (user_t *) malloc(sizeof(user_t));
         json_t *new_obj = json_array_get(friend_arr, i);
         strcpy(new->name, json_string_value(json_object_get(new_obj, "name")));
-        strcpy(new->shown_name, json_string_value(json_object_get(new_obj, "shown_name")));
+        strcpy(new->shown_name,
+               json_string_value(json_object_get(new_obj, "shown_name")));
         HASH_ADD_STR(psn->friend_requests_incoming, name, new);
     }
 
     friend_arr = json_object_get(root, "friendrqsout");
     for (i = 0; i < json_array_size(friend_arr); i++) {
-        struct user_s *new = (struct user_s *) malloc(sizeof(struct user_s));
+        user_t *new = (user_t *) malloc(sizeof(user_t));
         json_t *new_obj = json_array_get(friend_arr, i);
         strcpy(new->name, json_string_value(json_object_get(new_obj, "name")));
-        strcpy(new->shown_name, json_string_value(json_object_get(new_obj, "shown_name")));
+        strcpy(new->shown_name,
+               json_string_value(json_object_get(new_obj, "shown_name")));
         HASH_ADD_STR(psn->friend_requests_outgoing, name, new);
     }
+
+    char hex_str[4097];
+    strcpy(hex_str, json_string_value(json_object_get(root, "privkey")));
+    unsigned char key_buf[2048];
+    unsigned int outlen = sizeof(key_buf);
+
+    hex_str_to_buf(hex_str, strlen(hex_str), key_buf, &outlen);
+    rsa_import(key_buf, outlen, &psn->pk_key);
 
     //DEBUG("deserializing finished\n%s","");
     return PSN_ERR_SUCCESS;
 }
 
-psn_err psn_free(struct psn_s *psn)
+psn_err psn_free(psn_t *psn)
 {
     if (psn == NULL) {
         DEBUG("no valid psn instance%s\n", "");
@@ -491,7 +587,7 @@ psn_err psn_free(struct psn_s *psn)
     }
 
     //clear userlsts
-    struct user_s *s;
+    user_t *s;
     for (s = psn->friends; s != NULL; s = s->hh.next) {
         HASH_DEL(psn->friends, s);
         free(s);
