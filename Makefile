@@ -1,14 +1,17 @@
 EXECUTABLE = psn_cli
+LIBRARY = libpsn.a
+GUI = psn_gui
 
 TEST_EXE = psn_test
 
 OBJECTS =   psn.o \
-            psn_cli.o \
             init.o
 
 OTHER_OBJECTS = jansson/src/lib/libjansson.a \
                 mosquitto/lib/libmosquitto.a \
-                libtomcrypt/libtomcrypt.a 
+                libtomcrypt/libtomcrypt.a
+
+CLI_OBJECTS = psn_cli.o
 
 LIBFLAGS = -DUSE_GMP -DGMP_DESC
 
@@ -27,10 +30,16 @@ LDFLAGS =   -lssl \
             -lgmp \
             -lcares
 
-all: $(EXECUTABLE)
+all: $(EXECUTABLE) $(LIBRARY)
 
-$(EXECUTABLE): $(OBJECTS) $(OTHER_OBJECTS)
+$(EXECUTABLE): $(OBJECTS) $(OTHER_OBJECTS) $(CLI_OBJECTS)
 	$(CC) $(CFLAGS) $(IFLAGS) -o $@ $^ $(LDFLAGS)
+
+$(LIBRARY): $(OBJECTS) $(OTHER_OBJECTS)
+	ar rs $@ $^
+
+$(GUI):
+	valac -o $@ $
 
 jansson/src/lib/libjansson.a:
 	-cd jansson/src/; cmake ..; make; cd ../../
@@ -57,5 +66,5 @@ stats: $(OBJECTS)
 
 clean: 
 	-rm $(EXECUTABLE)
-	-rm $(OBJECTS)
+	-rm $(OBJECTS) $(CLI_OBJECTS)
 	-rm *.d
