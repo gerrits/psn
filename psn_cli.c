@@ -13,7 +13,7 @@ int main(int argc, const char *argv[])
 
     if (argc >= 3) {
         if (!strcmp(argv[1], "-c")) {
-            if (psn_cli_load_file(&myPsn, argv[2])) {
+            if (!psn_cli_load_file(&myPsn, argv[2])) {
                 psn_connect(&myPsn);
             } else {
                 printf("* ERROR: File not found\n");

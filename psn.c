@@ -215,7 +215,7 @@ void psn_message_callback(struct mosquitto *mosq __attribute__((unused)),
                 HASH_DEL(psn->friend_requests_outgoing, from_list);
 
                 user_t *new = (user_t *)
-                              malloc(sizeof(user_t));
+                              calloc(1, sizeof(user_t));
 
                 strcpy(new->name, topics[3]);
                 strcpy(new->shown_name, topics[3]);
@@ -230,7 +230,7 @@ void psn_message_callback(struct mosquitto *mosq __attribute__((unused)),
             }
             //source is not in any list, so push it to incoming list
             user_t *new = (user_t *)
-                          malloc(sizeof(user_t));
+                          calloc(1, sizeof(user_t));
 
             strcpy(new->name, topics[3]);
             strcpy(new->shown_name, topics[3]);
@@ -274,7 +274,7 @@ psn_err psn_make_friend_req(psn_t *psn , char *target, char *message)
     //publish the friend request
     mosquitto_publish(psn->mosq, NULL, topic, len, message , 1, false);
 
-    user_t *new = malloc(sizeof(user_t));
+    user_t *new = calloc(1, sizeof(user_t));
     strcpy(new->name, target);
     strcpy(new->shown_name, target);
 
@@ -400,10 +400,10 @@ int psn_get_friend_list(psn_t *psn, char ***friends)
         len++;
     }
 
-    *friends = malloc(len * sizeof(char **));
+    *friends = calloc(len , sizeof(char **));
 
     for (s = psn->friends; s != NULL; s = s->hh.next) {
-        *friends[i] = malloc(32 * sizeof(char));
+        *friends[i] = calloc(32, sizeof(char));
         strcpy(*friends[i], s->name);
         i++;
     }
@@ -456,10 +456,11 @@ psn_err psn_serialize_config(psn_t *psn, char *dest_str)
         return PSN_ERR_FAIL;
     }
 
-    unsigned char pk_key_str[2048];
-    unsigned long keylen = sizeof(pk_key_str);
-    char pk_hex[4097];
-    unsigned long hex_len = sizeof(pk_hex);
+    int crypt_err;
+    unsigned char pk_key_buf[2048];
+    char pk_hex_str[4097];
+    unsigned long key_buf_len = sizeof(pk_key_buf);
+    unsigned long hex_str_len = sizeof(pk_hex_str);
 
     json_t *root = json_object();
     user_t *s;
@@ -467,13 +468,29 @@ psn_err psn_serialize_config(psn_t *psn, char *dest_str)
     json_object_set_new(root, "username", json_string(psn->username));
     json_object_set_new(root, "hostname", json_string(psn->hostname));
     json_object_set_new(root, "port", json_integer(psn->port));
-    //  json_object_set_new(root, "key", json_string())
 
     json_t *friend_list = json_array();
     for (s = psn->friends; s != NULL; s = s->hh.next) {
         json_t *new_obj = json_object();
         json_object_set_new(new_obj, "name", json_string(s->name));
         json_object_set_new(new_obj, "shown_name", json_string(s->shown_name));
+
+        key_buf_len = sizeof(pk_key_buf);
+        if (s->pub_key.e == 0 ||
+            (crypt_err = rsa_export(pk_key_buf, &key_buf_len,
+                                    PK_PUBLIC, &s->pub_key)
+                         != CRYPT_OK)) {
+            DEBUG("rsa_export failed: %s\n", error_to_string(crypt_err));
+            printf("* WARNING: could not find key for: %s\n", s->name);
+
+            json_array_append(friend_list, new_obj);
+            continue;
+        }
+
+        hex_str_len = sizeof(pk_hex_str);
+        buf_to_hex_str(pk_key_buf, key_buf_len, pk_hex_str, &hex_str_len);
+
+        json_object_set_new(new_obj, "pubkey", json_string(pk_hex_str));
 
         json_array_append(friend_list, new_obj);
     }
@@ -483,6 +500,25 @@ psn_err psn_serialize_config(psn_t *psn, char *dest_str)
         json_t *new_obj = json_object();
         json_object_set_new(new_obj, "name", json_string(s->name));
         json_object_set_new(new_obj, "shown_name", json_string(s->shown_name));
+
+        key_buf_len = sizeof(pk_key_buf);
+
+        if (s->pub_key.e == 0 ||
+            (crypt_err = rsa_export(pk_key_buf, &key_buf_len,
+                                    PK_PUBLIC, &s->pub_key)
+                         != CRYPT_OK)) {
+            DEBUG("rsa_export failed: %s\n", error_to_string(crypt_err));
+            printf("* WARNING: could not find key for: %s\n", s->name);
+
+            json_array_append(friend_list, new_obj);
+            continue;
+        }
+
+        hex_str_len = sizeof(pk_hex_str);
+        buf_to_hex_str(pk_key_buf, key_buf_len, pk_hex_str, &hex_str_len);
+
+        json_object_set_new(new_obj, "pubkey", json_string(pk_hex_str));
+
         json_array_append(friend_req_i_list, new_obj);
     }
 
@@ -491,6 +527,24 @@ psn_err psn_serialize_config(psn_t *psn, char *dest_str)
         json_t *new_obj = json_object();
         json_object_set_new(new_obj, "name", json_string(s->name));
         json_object_set_new(new_obj, "shown_name", json_string(s->shown_name));
+
+        key_buf_len = sizeof(pk_key_buf);
+        if (s->pub_key.e == 0 ||
+            (crypt_err = rsa_export(pk_key_buf, &key_buf_len,
+                                    PK_PUBLIC, &s->pub_key)
+                         != CRYPT_OK)) {
+            DEBUG("rsa_export failed: %s\n", error_to_string(crypt_err));
+            printf("* WARNING: could not find key for: %s\n", s->name);
+
+            json_array_append(friend_list, new_obj);
+            continue;
+        }
+
+        hex_str_len = sizeof(pk_hex_str);
+        buf_to_hex_str(pk_key_buf, key_buf_len, pk_hex_str, &hex_str_len);
+
+        json_object_set_new(new_obj, "pubkey", json_string(pk_hex_str));
+
         json_array_append(friend_req_o_list, new_obj);
     }
 
@@ -498,10 +552,13 @@ psn_err psn_serialize_config(psn_t *psn, char *dest_str)
     json_object_set_new(root, "friendrqsinc", friend_req_i_list);
     json_object_set_new(root, "friendrqsout", friend_req_o_list);
 
-    rsa_export(pk_key_str, &keylen, PK_PRIVATE, &psn->pk_key);
-    buf_to_hex_str(pk_key_str, keylen, pk_hex, &hex_len);
+    key_buf_len = sizeof(pk_key_buf);
+    hex_str_len = sizeof(pk_hex_str);
 
-    json_object_set_new(root, "privkey", json_string(pk_hex));
+    rsa_export(pk_key_buf, &key_buf_len, PK_PRIVATE, &psn->pk_key);
+    buf_to_hex_str(pk_key_buf, key_buf_len, pk_hex_str, &hex_str_len);
+
+    json_object_set_new(root, "privkey", json_string(pk_hex_str));
 
     char *json_result = json_dumps(root, 0);
 
@@ -522,6 +579,11 @@ psn_err psn_deserialize_config(psn_t *psn, char *src_str)
     json_t *friend_arr;
     unsigned int i;
 
+    char pk_hex_str[4097];
+    unsigned char pk_key_buf[2048];
+
+    unsigned int key_buf_len = sizeof(pk_key_buf);
+
     json_t *root = json_loads(src_str, 0, &error);
 
     strcpy(psn->username,
@@ -535,43 +597,75 @@ psn_err psn_deserialize_config(psn_t *psn, char *src_str)
 
     friend_arr = json_object_get(root, "friends");
     for (i = 0; i < json_array_size(friend_arr); i++) {
-        user_t *new = (user_t *) malloc(sizeof(user_t));
+        user_t *new = (user_t *) calloc(1, sizeof(user_t));
         json_t *new_obj = json_array_get(friend_arr, i);
         strcpy(new->name, json_string_value(json_object_get(new_obj, "name")));
         strcpy(new->shown_name,
                json_string_value(json_object_get(new_obj, "shown_name")));
+
+        if (NULL == json_object_get(new_obj, "pubkey")) {
+            printf("* WARNING: %s has no public key stored\n", new->name);
+        } else {
+            strcpy(pk_hex_str,
+                   json_string_value(json_object_get(root, "pubkey")));
+            key_buf_len = sizeof(pk_key_buf);
+            hex_str_to_buf(pk_hex_str, strlen(pk_hex_str),
+                           pk_key_buf, &key_buf_len);
+            rsa_import(pk_key_buf, key_buf_len, &new->pub_key);
+        }
+
         HASH_ADD_STR(psn->friends, name, new);
     }
 
     friend_arr = json_object_get(root, "friendrqsinc");
     for (i = 0; i < json_array_size(friend_arr); i++) {
-        user_t *new = (user_t *) malloc(sizeof(user_t));
+        user_t *new = (user_t *) calloc(1, sizeof(user_t));
         json_t *new_obj = json_array_get(friend_arr, i);
         strcpy(new->name, json_string_value(json_object_get(new_obj, "name")));
         strcpy(new->shown_name,
                json_string_value(json_object_get(new_obj, "shown_name")));
+
+        if (NULL == json_object_get(new_obj, "pubkey")) {
+            printf("* WARNING: %s has no public key stored2\n", new->name);
+        } else {
+            strcpy(pk_hex_str,
+                   json_string_value(json_object_get(root, "pubkey")));
+            key_buf_len = sizeof(pk_key_buf);
+            hex_str_to_buf(pk_hex_str, strlen(pk_hex_str),
+                           pk_key_buf, &key_buf_len);
+            rsa_import(pk_key_buf, key_buf_len, &new->pub_key);
+        }
+
         HASH_ADD_STR(psn->friend_requests_incoming, name, new);
     }
 
     friend_arr = json_object_get(root, "friendrqsout");
     for (i = 0; i < json_array_size(friend_arr); i++) {
-        user_t *new = (user_t *) malloc(sizeof(user_t));
+        user_t *new = (user_t *) calloc(1, sizeof(user_t));
         json_t *new_obj = json_array_get(friend_arr, i);
         strcpy(new->name, json_string_value(json_object_get(new_obj, "name")));
         strcpy(new->shown_name,
                json_string_value(json_object_get(new_obj, "shown_name")));
+
+        if (NULL == json_object_get(new_obj, "pubkey")) {
+            printf("* WARNING: %s has no public key stored3\n", new->name);
+        } else {
+            strcpy(pk_hex_str,
+                   json_string_value(json_object_get(root, "pubkey")));
+            key_buf_len = sizeof(pk_key_buf);
+            hex_str_to_buf(pk_hex_str, strlen(pk_hex_str),
+                           pk_key_buf, &key_buf_len);
+            rsa_import(pk_key_buf, key_buf_len, &new->pub_key);
+        }
+
         HASH_ADD_STR(psn->friend_requests_outgoing, name, new);
     }
 
-    char hex_str[4097];
-    strcpy(hex_str, json_string_value(json_object_get(root, "privkey")));
-    unsigned char key_buf[2048];
-    unsigned int outlen = sizeof(key_buf);
+    strcpy(pk_hex_str, json_string_value(json_object_get(root, "privkey")));
+    key_buf_len = sizeof(pk_key_buf);
+    hex_str_to_buf(pk_hex_str, strlen(pk_hex_str), pk_key_buf, &key_buf_len);
+    rsa_import(pk_key_buf, key_buf_len, &psn->pk_key);
 
-    hex_str_to_buf(hex_str, strlen(hex_str), key_buf, &outlen);
-    rsa_import(key_buf, outlen, &psn->pk_key);
-
-    //DEBUG("deserializing finished\n%s","");
     return PSN_ERR_SUCCESS;
 }
 
